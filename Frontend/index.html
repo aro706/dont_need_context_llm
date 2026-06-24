@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>MicroMCP Space Graph</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/three@0.147.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/3d-force-graph@1.73.3/dist/3d-force-graph.min.js"></script>
+    <style>
+        body { margin: 0; padding: 0; background-color: #020204; color: white; font-family: sans-serif; overflow: hidden; }
+        #3d-graph { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+    </style>
+</head>
+<body class="flex">
+    <div class="w-64 h-screen bg-[#0a0a0e]/90 backdrop-blur-md border-r border-slate-800 flex flex-col z-20 absolute left-0 top-0 p-5 shadow-2xl">
+        <h1 class="text-xs font-bold tracking-widest text-white uppercase">Deep Space Architecture</h1>
+        <p class="text-[10px] text-slate-500 mt-1 mb-6 tracking-wide">Aditya Raj Ojha (20234010)</p>
+        
+        <div class="flex flex-col gap-2.5 text-[11px] mb-8 font-medium tracking-wide">
+            <span class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-[#00ffa6] shadow-[0_0_5px_#00ffa6]"></span> FILES</span>
+            <span class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-[#ffaa00] shadow-[0_0_5px_#ffaa00]"></span> ROUTES</span>
+            <span class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-[#ff0055] shadow-[0_0_5px_#ff0055]"></span> FUNCTIONS</span>
+        </div>
+
+        <p class="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-3">Workspaces</p>
+        <div id="project-list" class="flex-1 overflow-y-auto space-y-1 pr-2"></div>
+    </div>
+    
+    <div id="3d-graph"></div>
+
+    <script>
+        let Graph;
+
+        function initGraph() {
+            Graph = ForceGraph3D()(document.getElementById('3d-graph'))
+                .backgroundColor('#020204')
+                .nodeLabel('label')
+                .nodeThreeObject(node => {
+                    let color = '#ff0055'; 
+                    let size = 3;
+                    if (node.type === 'file') { color = '#00ffa6'; size = 10; }
+                    if (node.type === 'express_route') { color = '#ffaa00'; size = 6; }
+
+                    const geometry = new THREE.SphereGeometry(size, 32, 32);
+                    const material = new THREE.MeshBasicMaterial({ color: color });
+                    const sphere = new THREE.Mesh(geometry, material);
+
+                    const glowGeometry = new THREE.SphereGeometry(size * 1.8, 32, 32);
+                    const glowMaterial = new THREE.MeshBasicMaterial({
+                        color: color,
+                        transparent: true,
+                        opacity: 0.25,
+                        blending: THREE.AdditiveBlending,
+                        depthWrite: false
+                    });
+                    const glowSphere = new THREE.Mesh(glowGeometry, glowMaterial);
+                    sphere.add(glowSphere);
+
+                    return sphere;
+                })
+                .linkWidth(1.5)
+                .linkColor(() => 'rgba(255, 60, 0, 0.6)');
+
+            const starGeometry = new THREE.BufferGeometry();
+            const starMaterial = new THREE.PointsMaterial({
+                color: 0xffffff, size: 1.5, transparent: true, opacity: 0.8, sizeAttenuation: true
+            });
+            const starVertices = [];
+            for(let i = 0; i < 4000; i++) {
+                starVertices.push((Math.random() - 0.5) * 3000, (Math.random() - 0.5) * 3000, (Math.random() - 0.5) * 3000);
+            }
+            starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starVertices, 3));
+            Graph.scene().add(new THREE.Points(starGeometry, starMaterial));
+        }
+
+        function loadProject(projectName) {
+            document.querySelectorAll('.project-btn').forEach(btn => {
+                if(btn.dataset.name === projectName) {
+                    btn.classList.add('bg-slate-800', 'text-white', 'border-l-2', 'border-emerald-500');
+                    btn.classList.remove('text-slate-400', 'border-transparent');
+                } else {
+                    btn.classList.remove('bg-slate-800', 'text-white', 'border-emerald-500');
+                    btn.classList.add('text-slate-400', 'border-transparent');
+                }
+            });
+
+            fetch('/api/graph?project=' + encodeURIComponent(projectName))
+                .then(res => res.json())
+                .then(data => {
+                    const gData = {
+                        nodes: (data.nodes || []).map(n => ({ id: n.data.id, label: n.data.label, type: n.data.type })),
+                        links: (data.edges || []).map(e => ({ source: e.data.source, target: e.data.target }))
+                    };
+                    Graph.graphData(gData);
+                }).catch(err => console.error("Graph loading error:", err));
+        }
+
+        initGraph();
+
+        fetch('/api/projects')
+            .then(res => res.json())
+            .then(projects => {
+                const list = document.getElementById('project-list');
+                (projects || []).forEach(proj => {
+                    const btn = document.createElement('button');
+                    btn.className = 'project-btn w-full text-left px-3 py-2 text-xs rounded-r-md transition-all border-l-2 border-transparent text-slate-400 hover:bg-slate-800/50 hover:text-slate-200 mb-1';
+                    btn.innerText = proj;
+                    btn.dataset.name = proj;
+                    btn.onclick = () => loadProject(proj);
+                    list.appendChild(btn);
+                });
+                if(projects && projects.length > 0) {
+                    loadProject(projects[0]);
+                }
+            });
+    </script>
+</body>
+</html>
